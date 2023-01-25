@@ -1,0 +1,204 @@
+---
+title: "Airline Satisfaction Project"
+author: Andy Chiv
+date: "Last Updated: `r format(Sys.time(), '%d, %B, %Y at %H:%M')`"
+output: rmdformats::readthedown
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message = FALSE)
+options(scipen=999)
+rm(list=ls())
+set.seed(1)
+```
+
+```{r libraries}
+library(tidyverse)
+library(tidymodels)
+library(tidypredict)
+library(readr)
+library(dplyr)
+library(rvest)
+library(ggplot2)
+library(forcats)
+library(here)
+library(kknn)
+```
+
+# Introduction
+
+Since graduating from high school in 2015, I had many opportunities to travel the world and witness 
+many different cultures throughout my volunteer and study abroad experience. Going somewhere far is 
+inevitably expensive, especially when booking for flight routes. I used to spend so much time trying 
+to get the best deals out of airline tickets by waiting at the right time of the day to save costs.
+Of course, many factors are usually involved when I decided to click the `purchase` button and 
+therefore, I want to dive deep into these factors that influence my decision using data. 
+As a usual airline traveler, this sparks my curiosity on how the Airline industry finds way to keep 
+their customers Happy or at least satisified with the service. In this project, I will be looking at 
+Airline Passenger Satisfaction Dataset provided by Maven Analytics and the goals is to answer some of the questions include: 
+
+  1. Which percentage of airline passengers are satisfied? Does it vary by customer type? What about type of travel?
+  2. What is the customer profile for a repeating airline passenger?
+  3. Does flight distance affect customer perferences or flight patterns?
+  4. Which factors contribute to customer satisfaction the most? What about dissatifaction?
+
+# Dataset:
+
+A brief description for each variable: 
+
+  - `ID`:	Unique passenger identifier
+  - `Gender`:	Gender of the passenger (Female/Male)
+  - `Age`:	Age of the passenger
+  - `Customer Type`:	Type of airline customer (First-time/Returning)
+  - `Type of Travel`:	Purpose of the flight (Business/Personal)
+  - `Class`:	Travel class in the airplane for the passenger seat
+  - `Flight Distance`:	Flight distance in miles
+  - `Departure Delay`:	Flight departure delay in minutes
+  - `Arrival Delay`:	Flight arrival delay in minutes
+
+Satification Level: from 1 lowest to 5 highest, 0 means "Not Applicable"
+
+  - `Departure and Arrival Time Convenience`:	Satisfaction level with the convenience of the flight departure and arrival times
+  - `Ease of Online Booking`:	Satisfaction level with the online booking experience
+  - `Check-in Service`:	Satisfaction level with the check-in service
+  - `Online Boarding`:	Satisfaction level with the online boarding experience
+  - `Gate Location`: Satisfaction level with the gate location in the airport
+  - `On-board Service`:	Satisfaction level with the on-boarding service in the airport
+  - `Seat Comfort`:	Satisfaction level with the comfort of the airplane seat
+  - `Leg Room Service`:	Satisfaction level with the leg room of the airplane seat
+  - `Cleanliness`:	Satisfaction level with the cleanliness of the airplane
+  - `Food and Drink`:	Satisfaction level with the food and drinks on the airplane
+  - `In-flight Service`:	Satisfaction level with the in-flight service
+  - `In-flight Wifi Service`:	Satisfaction level with the in-flight Wifi service
+  - `In-flight Entertainment`: Satisfaction level with the in-flight entertainment
+  - `Baggage Handling`:	Satisfaction level with the baggage handling from the airline
+  - `Satisfaction`:	Overall satisfaction level with the airline (Satisfied/Neutral or unsatisfied)
+
+
+# Exploratory Data Analysis
+
+```{r}
+airline <- read.csv("airline_passenger_satisfaction.csv")
+```
+
+```{r}
+str(airline)
+```
+
+# Analysis 1: 
+
+### How many percentages of airline passengers are satisfied?
+
+```{r}
+airline %>% 
+  count(Satisfaction = factor(Satisfaction)) %>% 
+  mutate(pct = prop.table(n)) %>% 
+  ggplot(aes(x=Satisfaction, y = pct, fill = Satisfaction, label=scales::percent(pct))) +
+  geom_col(position = 'dodge') +
+  geom_text(position = position_dodge(width=.9), vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="Satisfaction Type", y = "Percentage")
+```
+
+Out of 120000+ passengers, only 43 percents of the passengers are satisfied overall. This statistics can be alarming since 
+the overall satisfication rate stays below 50 percents. 
+
+### How many percentages of airline passengers are satisfied by Customer Type?
+
+```{r}
+airline %>% 
+  ggplot(aes(x=factor(Satisfaction), fill=factor(Customer.Type))) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="Satisfaction Type", y = "Percentage", 
+       title = "Passenger Satisfaction by Customer Type")
+  
+```
+
+This bar plot demonstrates that majority of the airline customers are returning customers. They are accounted for the 
+majority in both Satisfied and Nuetral/Satisfied level. What is important to see here is that about 75% of Nuetral/Satisfied customers are returning customers and they are the target groups if the airline wants to retain their current customers. **The next potential questions: What strategies should be implemented to reduce this percentage of unsatisfied returning customer to be satisfied with the services?**
+
+
+### How many percentages of airline passengers are satisfied by Type of Travel?
+
+```{r}
+airline %>% 
+  ggplot(aes(x=factor(Satisfaction), fill=factor(Type.of.Travel))) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="Satisfaction Type", y = "Percentage", 
+       title = "Passenger Satisfaction by Type of Travel")
+  
+```
+
+As expected, around 90% of satified customers are those who travel for business purpose. 
+It can be hypothesized that this number is high because business class tends to receive 
+more premuim services. 50% of the unsatified customers are those who travel for personal purpose. 
+
+
+# Analysis 2: 
+
+### What the customer profile for a repeating airline passenger?
+
+Many customers have chosen to travel again with the airline and I would like to know 
+their demographics to understand our customer better. With the given data, I can 
+observe the demographics from only `Gender` and `Age`. Note that repeating airline passengers 
+are essentially returning passengers. 
+
+```{r}
+airline %>% 
+  filter(Customer.Type == "Returning") %>% 
+  select(Gender) %>% 
+  count(Gender = factor(Gender)) %>% 
+  mutate(pct = n/sum(n))
+
+```
+
+Gender ratio for the returning customers is about 1 to 1. 
+
+```{r}
+airline %>% 
+  filter(Customer.Type == "Returning") %>% 
+  select(Age, Gender) %>%
+  group_by(Gender) %>% 
+  summarise(mean = mean(Age), median = median(Age)) %>% 
+  as.data.frame()
+```
+
+```{r}
+airline %>% 
+  filter(Customer.Type == "Returning") %>% 
+  select(Age, Gender) %>%
+  ggplot(aes(x=Age, fill = Gender)) +
+  geom_boxplot() +
+  labs(title = "Age distribution by Gender")
+```
+
+The median age for both male and female passengers are around 43 years while the average age is around 41 years old. 
+
+
+
+
+# Does flght distance affect customer perferences or flight patterns?
+
+# Which factors contribute to customer satisfaction the most? What about dissatifaction?
+
+In order to answer this question, we want to look at Regression 
+
+```{r}
+airline.satisfied <- 
+  airline %>% 
+  filter(Satisfaction == "Satisfied")
+```
+
+```{r}
+model <- lm(Sati ~ ., )
+
+```
+
+
+
+
